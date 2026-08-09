@@ -60,3 +60,7 @@ pnpm deploy:scheduled
 ```
 
 `wrangler.cron.jsonc` 在 UTC 02:00 和 03:00 触发。Worker 使用 `Pacific/Auckland` 判断当地时间，只在对应 15:00 的一次运行；另一触发只记录 `cron_skipped`，不会查询 Canvas 或发送邮件。
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE) 开源。
