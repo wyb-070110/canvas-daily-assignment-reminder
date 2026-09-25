@@ -334,6 +334,8 @@ OAuth 应用应保持 Production 状态。Refresh Token 被撤销、客户端密
 
 Browser Run 可能发生临时启动失败。此类运行必须发送失败告警；后续定时运行可恢复，但不允许将失败运行解释为无作业。
 
+对 UPSTREAM、NETWORK 和 UNKNOWN 类别的 Canvas 阶段失败，Worker 在同一次运行中等待 60 秒后整体重试一次，并记录 `canvas_check_retry` 日志；AUTH、CONFIG 和 RATE_LIMIT 不重试，以免账号被锁定或加重限流。重试仍失败时照常发送失败告警。
+
 ### OP-006 配置变更验收
 
 修改收件地址、Canvas 密码、Gmail OAuth、Worker 代码或 Cron 后，必须重新运行自动测试和真实投递测试，并同时检查 Cloudflare 日志与收件邮箱。

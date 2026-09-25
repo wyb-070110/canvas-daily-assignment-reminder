@@ -89,3 +89,31 @@ export function errorCategory(error: unknown): ErrorCategory {
   }
   return "UNKNOWN";
 }
+
+// AUTH is never retried (repeated logins risk an account lockout), CONFIG
+// cannot fix itself, and RATE_LIMIT needs more than a short pause.
+const TRANSIENT_RUN_CATEGORIES = new Set<ErrorCategory>(["UPSTREAM", "NETWORK", "UNKNOWN"]);
+
+export async function retryTransientRun<T>(
+  run: () => Promise<T>,
+  options: {
+    attempts?: number;
+    delayMs?: number;
+    onRetry?: (error: unknown, attempt: number) => void;
+  } = {}
+): Promise<T> {
+  const attempts = options.attempts ?? 2;
+  const delayMs = options.delayMs ?? 60_000;
+
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      if (attempt >= attempts || !TRANSIENT_RUN_CATEGORIES.has(errorCategory(error))) {
+        throw error;
+      }
+      options.onRetry?.(error, attempt);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}

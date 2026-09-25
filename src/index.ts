@@ -6,7 +6,7 @@ import {
 } from "./browser-canvas.ts";
 import { renderFailureEmail, renderReminderEmail } from "./email.ts";
 import { sendGmailEmail } from "./gmail.ts";
-import { errorCategory, SafeHttpError } from "./http.ts";
+import { errorCategory, retryTransientRun, SafeHttpError } from "./http.ts";
 import { buildReminder } from "./reminder.ts";
 import { isAucklandThreePm } from "./time.ts";
 import type { RenderedEmail } from "./types.ts";
@@ -53,22 +53,38 @@ export async function runDailyCheck(env: RuntimeEnv, now: Date): Promise<void> {
 
   try {
     requireConfig(env, ["CANVAS_USERNAME", "CANVAS_PASSWORD"]);
-    canvasPhase = "browser_launch";
-    const browser = await puppeteer.launch(env.BROWSER);
-    try {
-      canvasPhase = "page_open";
-      const page = new PuppeteerCanvasPage(await browser.newPage());
-      canvasPhase = "canvas_login";
-      await loginToCanvas(page, env.CANVAS_USERNAME, env.CANVAS_PASSWORD);
-      canvasPhase = "canvas_read";
-      const reminder = await buildReminder(new BrowserCanvasClient(page), now);
-      email = renderReminderEmail(reminder);
-      successLog = { kind: reminder.kind, count: reminder.items.length };
-    } finally {
-      await browser.close().catch(() => {
-        console.error(JSON.stringify({ event: "browser_close_failed" }));
-      });
-    }
+    const reminder = await retryTransientRun(
+      async () => {
+        canvasPhase = "browser_launch";
+        const browser = await puppeteer.launch(env.BROWSER);
+        try {
+          canvasPhase = "page_open";
+          const page = new PuppeteerCanvasPage(await browser.newPage());
+          canvasPhase = "canvas_login";
+          await loginToCanvas(page, env.CANVAS_USERNAME, env.CANVAS_PASSWORD);
+          canvasPhase = "canvas_read";
+          return await buildReminder(new BrowserCanvasClient(page), now);
+        } finally {
+          await browser.close().catch(() => {
+            console.error(JSON.stringify({ event: "browser_close_failed" }));
+          });
+        }
+      },
+      {
+        onRetry: (error, attempt) => {
+          console.warn(
+            JSON.stringify({
+              event: "canvas_check_retry",
+              attempt,
+              category: errorCategory(error),
+              phase: canvasPhase
+            })
+          );
+        }
+      }
+    );
+    email = renderReminderEmail(reminder);
+    successLog = { kind: reminder.kind, count: reminder.items.length };
   } catch (error) {
     const category = errorCategory(error);
     console.error(
