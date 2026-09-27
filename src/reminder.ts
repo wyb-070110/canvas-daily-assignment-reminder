@@ -75,11 +75,11 @@ export async function evaluateAssignments(
     return { kind: "primary", generatedAt, items: primary };
   }
 
-  const sevenDaysLater = generatedAt.getTime() + 7 * 24 * 60 * 60 * 1000;
+  const seventhAucklandDay = addCalendarDays(today, 7);
   const candidates = all.filter(
     (item) =>
       item.dueAt.getTime() >= generatedAt.getTime() &&
-      item.dueAt.getTime() <= sevenDaysLater
+      aucklandDateKey(item.dueAt) <= seventhAucklandDay
   );
 
   const classified = await mapWithConcurrency(candidates, 4, (item) =>

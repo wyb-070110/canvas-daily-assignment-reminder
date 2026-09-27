@@ -51,6 +51,22 @@ test("Gmail MIME message is UTF-8 base64url encoded", () => {
   assert.match(mime, /multipart\/alternative/);
 });
 
+test("Gmail MIME message sends the backup recipient as Bcc", () => {
+  const raw = buildGmailRawMessage(
+    {
+      from: "sender@gmail.com",
+      to: "primary@example.com",
+      bcc: "backup@example.com"
+    },
+    rendered
+  );
+  const padding = "=".repeat((4 - (raw.length % 4)) % 4);
+  const padded = raw.replaceAll("-", "+").replaceAll("_", "/") + padding;
+  const mime = Buffer.from(padded, "base64").toString("utf8");
+  assert.match(mime, /To: primary@example\.com/);
+  assert.match(mime, /Bcc: backup@example\.com/);
+});
+
 test("Gmail OAuth secret and access token stay in their intended requests", async () => {
   let calls = 0;
   const fetcher: FetchLike = async (input, init) => {

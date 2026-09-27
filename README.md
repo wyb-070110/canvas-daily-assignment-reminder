@@ -1,15 +1,15 @@
 # Canvas 每日作业 Gmail 提醒
 
 这是一个只读的 Cloudflare Worker。它每天在奥克兰时间 15:00 登录
-`canvas.auckland.ac.nz`，检查今天和明天尚未提交的作业，并通过 Gmail API
-从邮箱 A 向邮箱 B 发送提醒。
+`canvas.auckland.ac.nz`，检查今天、明天尚未提交的作业，以及截至第七个奥克兰当地日结束前的考试和大作业，并通过 Gmail API
+从邮箱 A 向主邮箱发送提醒，并可通过密送同时投递到一个备用邮箱。
 
 ## 安全说明
 
 - 奥大 Canvas 未开放个人 API Token，因此使用 Cloudflare Browser Run 登录；请更换曾在聊天中发送过的密码，并只把新专用密码存入 Cloudflare Secrets。
 - 云端浏览器仅用于登录；登录后 Worker 只调用 Canvas 的同源 `GET` 接口。
 - Gmail OAuth 只申请 `https://www.googleapis.com/auth/gmail.send`，不读取邮箱。
-- Canvas 凭据、Google OAuth 凭据、刷新令牌和两个邮箱地址全部放在 Cloudflare Secrets 中。
+- Canvas 凭据、Google OAuth 凭据、刷新令牌和邮箱地址全部放在 Cloudflare Secrets 中。
 - 不要把 `.dev.vars`、`.env` 或任何真实密钥提交到 Git。
 
 ## 1. 创建 Gmail 发送授权
@@ -47,9 +47,10 @@ pnpm exec wrangler secret put GMAIL_CLIENT_SECRET -c wrangler.jsonc
 pnpm exec wrangler secret put GMAIL_REFRESH_TOKEN -c wrangler.jsonc
 pnpm exec wrangler secret put ALERT_FROM_EMAIL -c wrangler.jsonc
 pnpm exec wrangler secret put ALERT_TO_EMAIL -c wrangler.jsonc
+pnpm exec wrangler secret put ALERT_BACKUP_TO_EMAIL -c wrangler.jsonc
 ```
 
-`ALERT_FROM_EMAIL` 必须是授予 OAuth 权限的 Gmail 地址，或该 Gmail 账号中已验证的发件别名。所有命令都会在终端中安全提示输入，不要把值写进命令行参数。
+`ALERT_FROM_EMAIL` 必须是授予 OAuth 权限的 Gmail 地址，或该 Gmail 账号中已验证的发件别名。`ALERT_BACKUP_TO_EMAIL` 可选，并以密送方式投递，不会向主收件人显示。所有命令都会在终端中安全提示输入，不要把值写进命令行参数。
 
 ## 4. 确认后启用每天运行
 

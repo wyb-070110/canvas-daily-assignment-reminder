@@ -7,6 +7,7 @@ export interface GmailConfig {
   refreshToken: string;
   from: string;
   to: string;
+  bcc?: string;
 }
 
 interface TokenResponse {
@@ -41,15 +42,17 @@ function encodeHeader(value: string): string {
 }
 
 export function buildGmailRawMessage(
-  config: Pick<GmailConfig, "from" | "to">,
+  config: Pick<GmailConfig, "from" | "to" | "bcc">,
   email: RenderedEmail
 ): string {
   assertEmailHeader(config.from, "sender");
   assertEmailHeader(config.to, "recipient");
+  if (config.bcc) assertEmailHeader(config.bcc, "backup recipient");
   const boundary = `canvas-reminder-${crypto.randomUUID()}`;
   const mime = [
     `From: ${encodeHeader("Canvas 作业提醒")} <${config.from}>`,
     `To: ${config.to}`,
+    ...(config.bcc ? [`Bcc: ${config.bcc}`] : []),
     `Subject: ${encodeHeader(email.subject)}`,
     "MIME-Version: 1.0",
     `Content-Type: multipart/alternative; boundary="${boundary}"`,

@@ -92,21 +92,21 @@ function renderPrimary(items: PrimaryReminderItem[]): RenderedEmail {
 }
 
 function renderMajor(items: MajorReminderItem[]): RenderedEmail {
-  const subject = "Canvas：未来一周大作业提醒";
-  const html = `<p>今天和明天没有未提交作业；以下项目可能需要提前安排：</p><ul>${items
+  const subject = "Canvas：未来一周重要任务提醒";
+  const html = `<p>今天和明天没有未提交作业；以下考试或大作业需要提前安排：</p><ul>${items
     .map((item) =>
-      itemHtml(item, item.probable ? "可能的大作业" : "大作业", item.reason)
+      itemHtml(item, item.probable ? "可能的大作业" : "重要任务", item.reason)
     )
     .join("")}</ul>`;
   const text = items
     .map((item) =>
-      itemText(item, item.probable ? "可能的大作业" : "大作业", item.reason)
+      itemText(item, item.probable ? "可能的大作业" : "重要任务", item.reason)
     )
     .join("\n");
   return {
     subject,
     html: wrapHtml(subject, html),
-    text: `${subject}\n\n今天和明天没有未提交作业；以下项目可能需要提前安排：\n${text}\n\n时间均为奥克兰时间。`
+    text: `${subject}\n\n今天和明天没有未提交作业；以下考试或大作业需要提前安排：\n${text}\n\n时间均为奥克兰时间。`
   };
 }
 
@@ -115,7 +115,7 @@ export function renderReminderEmail(result: ReminderResult): RenderedEmail {
   if (result.kind === "major") return renderMajor(result.items);
 
   const subject = "Canvas：近期没有发现未完成作业";
-  const message = "今天和明天没有未提交作业，未来七天内也没有识别到大作业。";
+  const message = "今天和明天没有未提交作业，未来七个奥克兰当地日内也没有识别到考试或大作业。";
   return {
     subject,
     html: wrapHtml(subject, `<p>${message}</p>`),

@@ -7,6 +7,12 @@ import type {
 
 const COMPLETED_STATES = new Set(["submitted", "graded", "pending_review"]);
 
+const EXAM_PATTERNS: Array<[RegExp, string]> = [
+  [/\b(?:mid[ -]?semester|midterm|final)\s+(?:exam(?:ination)?|test)\b/i, "考试"],
+  [/\b(?:exam(?:ination)?|test)\b/i, "考试"],
+  [/考试/i, "考试"]
+];
+
 const STRONG_PATTERNS: Array<[RegExp, string]> = [
   [/\blab(?:oratory)?\s+report\b/i, "实验报告"],
   [/\b(?:technical|design|research|final|project)\s+report\b/i, "报告"],
@@ -57,6 +63,18 @@ export async function classifyMajorAssignment(
 ): Promise<MajorReminderItem | null> {
   const title = item.assignment.name;
   const description = plainText(item.assignment.description);
+
+  if (!item.assignment.quiz_id) {
+    const examTitle = firstMatch(title, EXAM_PATTERNS);
+    if (examTitle) {
+      return { ...item, reason: `类型：${examTitle}`, probable: false };
+    }
+
+    const examDescription = firstMatch(description, EXAM_PATTERNS);
+    if (examDescription) {
+      return { ...item, reason: `说明中显示：${examDescription}`, probable: false };
+    }
+  }
 
   const strongTitle = firstMatch(title, STRONG_PATTERNS);
   if (strongTitle) {

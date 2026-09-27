@@ -75,3 +75,24 @@ test("empty result is explicit when no qualifying work exists", async () => {
   );
   assert.equal(result.kind, "empty");
 });
+
+test("fallback includes the whole seventh Auckland calendar day", async () => {
+  const result = await evaluateAssignments(
+    [
+      {
+        course,
+        assignments: [
+          assignment(6, "Test 1", "2026-08-19T06:50:00Z"), // Wednesday 18:50 NZST
+          assignment(7, "Test 2", "2026-08-19T12:30:00Z") // Thursday 00:30 NZST
+        ]
+      }
+    ],
+    new Date("2026-08-12T03:00:00Z"), // Wednesday 15:00 NZST
+    async () => ({ id: 1, time_limit: null })
+  );
+
+  assert.equal(result.kind, "major");
+  if (result.kind === "major") {
+    assert.deepEqual(result.items.map((item) => item.assignment.id), [6]);
+  }
+});

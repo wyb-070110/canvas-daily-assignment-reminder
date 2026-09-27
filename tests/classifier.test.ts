@@ -49,3 +49,36 @@ test("unknown short quizzes are not guessed to be major", async () => {
   const result = await classifyMajorAssignment(item, async () => ({ id: 5, time_limit: 60 }));
   assert.equal(result, null);
 });
+
+test("tests and exams are recognized as important tasks without quiz metadata", async () => {
+  const item: AssignmentWithCourse = {
+    course: { id: 10, name: "Course" },
+    assignment: { ...baseAssignment, name: "Test 1 - Theory" },
+    dueAt: new Date(baseAssignment.due_at!)
+  };
+  let quizLoaded = false;
+  const result = await classifyMajorAssignment(item, async () => {
+    quizLoaded = true;
+    return { id: 1, time_limit: null };
+  });
+
+  assert.equal(result?.reason, "类型：考试");
+  assert.equal(result?.probable, false);
+  assert.equal(quizLoaded, false);
+});
+
+test("Canvas quizzes are not classified as exams from title or description", async () => {
+  const item: AssignmentWithCourse = {
+    course: { id: 10, name: "Course" },
+    assignment: {
+      ...baseAssignment,
+      name: "Quiz #1",
+      description: "This examination covers weeks 1-3.",
+      quiz_id: 8
+    },
+    dueAt: new Date(baseAssignment.due_at!)
+  };
+  const result = await classifyMajorAssignment(item, async () => ({ id: 8, time_limit: 30 }));
+
+  assert.equal(result, null);
+});

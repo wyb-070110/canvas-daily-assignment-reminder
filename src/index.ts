@@ -19,6 +19,7 @@ export interface SecretEnv {
   GMAIL_REFRESH_TOKEN: string;
   ALERT_FROM_EMAIL: string;
   ALERT_TO_EMAIL: string;
+  ALERT_BACKUP_TO_EMAIL?: string;
 }
 
 export type RuntimeEnv = Env & SecretEnv;
@@ -44,7 +45,8 @@ export async function runDailyCheck(env: RuntimeEnv, now: Date): Promise<void> {
     clientSecret: env.GMAIL_CLIENT_SECRET,
     refreshToken: env.GMAIL_REFRESH_TOKEN,
     from: env.ALERT_FROM_EMAIL,
-    to: env.ALERT_TO_EMAIL
+    to: env.ALERT_TO_EMAIL,
+    bcc: env.ALERT_BACKUP_TO_EMAIL?.trim() || undefined
   };
 
   let email: RenderedEmail;
