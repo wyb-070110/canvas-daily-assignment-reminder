@@ -5,19 +5,17 @@ import {
   PuppeteerCanvasPage
 } from "./browser-canvas.ts";
 import { renderFailureEmail, renderReminderEmail } from "./email.ts";
-import { sendGmailEmail } from "./gmail.ts";
 import { errorCategory, SafeHttpError } from "./http.ts";
 import { buildReminder } from "./reminder.ts";
+import { RESEND_DEFAULT_FROM, sendResendEmail } from "./resend.ts";
 import { isAucklandThreePm } from "./time.ts";
 import type { RenderedEmail } from "./types.ts";
 
 export interface SecretEnv {
   CANVAS_USERNAME: string;
   CANVAS_PASSWORD: string;
-  GMAIL_CLIENT_ID: string;
-  GMAIL_CLIENT_SECRET: string;
-  GMAIL_REFRESH_TOKEN: string;
-  ALERT_FROM_EMAIL: string;
+  RESEND_API_KEY: string;
+  RESEND_FROM_EMAIL?: string;
   ALERT_TO_EMAIL: string;
   ALERT_BACKUP_TO_EMAIL?: string;
 }
@@ -33,20 +31,15 @@ function requireConfig(env: RuntimeEnv, required: SecretKey[]): void {
 }
 
 export async function runDailyCheck(env: RuntimeEnv, now: Date): Promise<void> {
-  requireConfig(env, [
-    "GMAIL_CLIENT_ID",
-    "GMAIL_CLIENT_SECRET",
-    "GMAIL_REFRESH_TOKEN",
-    "ALERT_FROM_EMAIL",
-    "ALERT_TO_EMAIL"
-  ]);
-  const gmailConfig = {
-    clientId: env.GMAIL_CLIENT_ID,
-    clientSecret: env.GMAIL_CLIENT_SECRET,
-    refreshToken: env.GMAIL_REFRESH_TOKEN,
-    from: env.ALERT_FROM_EMAIL,
-    to: env.ALERT_TO_EMAIL,
-    bcc: env.ALERT_BACKUP_TO_EMAIL?.trim() || undefined
+  requireConfig(env, ["RESEND_API_KEY", "ALERT_TO_EMAIL"]);
+  const customFrom = env.RESEND_FROM_EMAIL?.trim();
+  const resendConfig = {
+    apiKey: env.RESEND_API_KEY.trim(),
+    from: customFrom || RESEND_DEFAULT_FROM,
+    to: env.ALERT_TO_EMAIL.trim(),
+    // Resend's shared sender rejects any recipient other than the account
+    // owner, so the backup copy is only possible with a verified domain.
+    bcc: customFrom ? env.ALERT_BACKUP_TO_EMAIL?.trim() || undefined : undefined
   };
 
   let email: RenderedEmail;
@@ -86,13 +79,13 @@ export async function runDailyCheck(env: RuntimeEnv, now: Date): Promise<void> {
   }
 
   try {
-    await sendGmailEmail(gmailConfig, email);
+    await sendResendEmail(resendConfig, email);
     if (successLog) {
       console.log(JSON.stringify({ event: "canvas_reminder_sent", ...successLog }));
     }
   } catch (mailError) {
     console.error(
-      JSON.stringify({ event: "gmail_delivery_failed", category: errorCategory(mailError) })
+      JSON.stringify({ event: "email_delivery_failed", category: errorCategory(mailError) })
     );
     throw new Error("Notification delivery failed");
   }

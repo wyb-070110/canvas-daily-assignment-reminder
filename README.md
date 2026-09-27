@@ -1,27 +1,25 @@
-# Canvas 每日作业 Gmail 提醒
+# Canvas 每日作业邮件提醒
 
 这是一个只读的 Cloudflare Worker。它每天在奥克兰时间 15:00 登录
-`canvas.auckland.ac.nz`，检查今天、明天尚未提交的作业，以及截至第七个奥克兰当地日结束前的考试和大作业，并通过 Gmail API
-从邮箱 A 向主邮箱发送提醒，并可通过密送同时投递到一个备用邮箱。
+`canvas.auckland.ac.nz`，检查今天、明天尚未提交的作业，以及截至第七个奥克兰当地日结束前的考试和大作业，并通过 Resend
+向主邮箱发送提醒。绑定自有域名后还可通过密送同时投递到一个备用邮箱。
 
 ## 安全说明
 
 - 奥大 Canvas 未开放个人 API Token，因此使用 Cloudflare Browser Run 登录；请更换曾在聊天中发送过的密码，并只把新专用密码存入 Cloudflare Secrets。
 - 云端浏览器仅用于登录；登录后 Worker 只调用 Canvas 的同源 `GET` 接口。
-- Gmail OAuth 只申请 `https://www.googleapis.com/auth/gmail.send`，不读取邮箱。
-- Canvas 凭据、Google OAuth 凭据、刷新令牌和邮箱地址全部放在 Cloudflare Secrets 中。
+- 发信使用 Resend API Key，与 Google 或学校账号密码无关，改密码不会导致发信失效。
+- Canvas 凭据、Resend API Key 和邮箱地址全部放在 Cloudflare Secrets 中。
 - 不要把 `.dev.vars`、`.env` 或任何真实密钥提交到 Git。
 
-## 1. 创建 Gmail 发送授权
+## 1. 创建 Resend 发信密钥
 
-1. 在 Google Cloud Console 创建个人项目并启用 Gmail API。
-2. 配置 OAuth consent screen，只添加 `gmail.send` 权限；把发布状态改为 **In production**，避免 Testing 状态的刷新令牌七天后失效。
-3. 创建 Web application OAuth client，并添加授权重定向地址：
-   `https://developers.google.com/oauthplayground`。
-4. 在 Google OAuth 2.0 Playground 的设置中启用 **Use your own OAuth credentials**，输入 Client ID 和 Client Secret。
-5. 授权 `https://www.googleapis.com/auth/gmail.send`，交换授权码并取得 Refresh Token。
+1. 用**接收提醒的邮箱**注册 [Resend](https://resend.com)（免费额度每月 3,000 封）。
+2. 在 **API Keys** 中创建一个权限为 **Sending access** 的密钥（以 `re_` 开头）。
+3. 未绑定域名时，发件人固定为 `onboarding@resend.dev`，并且只能发往注册 Resend 的邮箱，因此 `ALERT_TO_EMAIL` 必须与该邮箱完全一致。
+4. 如需备用收件人或自定义发件人，先在 Resend 中验证自有域名，再设置 `RESEND_FROM_EMAIL` 和 `ALERT_BACKUP_TO_EMAIL`。
 
-个人用途可以不提交 Google 验证，但首次授权会显示未验证应用警告。
+首次收到时可能进入垃圾邮件，请把发件人标记为“非垃圾邮件”。
 
 ## 2. 安装与验证
 
@@ -42,19 +40,15 @@ pnpm dev
 pnpm deploy:preview
 pnpm exec wrangler secret put CANVAS_USERNAME -c wrangler.jsonc
 pnpm exec wrangler secret put CANVAS_PASSWORD -c wrangler.jsonc
-pnpm exec wrangler secret put GMAIL_CLIENT_ID -c wrangler.jsonc
-pnpm exec wrangler secret put GMAIL_CLIENT_SECRET -c wrangler.jsonc
-pnpm exec wrangler secret put GMAIL_REFRESH_TOKEN -c wrangler.jsonc
-pnpm exec wrangler secret put ALERT_FROM_EMAIL -c wrangler.jsonc
+pnpm exec wrangler secret put RESEND_API_KEY -c wrangler.jsonc
 pnpm exec wrangler secret put ALERT_TO_EMAIL -c wrangler.jsonc
-pnpm exec wrangler secret put ALERT_BACKUP_TO_EMAIL -c wrangler.jsonc
 ```
 
-`ALERT_FROM_EMAIL` 必须是授予 OAuth 权限的 Gmail 地址，或该 Gmail 账号中已验证的发件别名。`ALERT_BACKUP_TO_EMAIL` 可选，并以密送方式投递，不会向主收件人显示。所有命令都会在终端中安全提示输入，不要把值写进命令行参数。
+`ALERT_TO_EMAIL` 必须是注册 Resend 的邮箱。`RESEND_FROM_EMAIL`（自有域名下的发件地址）和 `ALERT_BACKUP_TO_EMAIL`（密送备用收件人）为可选项，只有在 Resend 中验证过域名后才生效。所有命令都会在终端中安全提示输入，不要把值写进命令行参数。
 
 ## 4. 确认后启用每天运行
 
-真实只读 Canvas 检查和 Gmail 测试邮件成功后：
+真实只读 Canvas 检查和测试邮件成功后：
 
 ```sh
 pnpm deploy:scheduled

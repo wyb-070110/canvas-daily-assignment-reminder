@@ -2,14 +2,14 @@
 
 ## 1. 文档信息
 
-- 项目名称：Canvas 每日作业 Gmail 提醒
+- 项目名称：Canvas 每日作业邮件提醒
 - Canvas 站点：`https://canvas.auckland.ac.nz`
 - 运行平台：Cloudflare Worker + Browser Run + Cron Trigger
-- 通知渠道：Gmail API 邮件，通过手机邮箱客户端产生消息提醒
+- 通知渠道：Resend API 邮件，通过手机邮箱客户端产生消息提醒
 - 当前收件地址：`**@aucklanduni.ac.nz`
 - 时区：`Pacific/Auckland`
 - 文档状态：按当前已部署版本整理
-- 最后更新：2026-08-08
+- 最后更新：2026-09-25（发信渠道由 Gmail API 改为 Resend）
 
 ## 2. 项目目标
 
@@ -58,7 +58,7 @@
 
 ### AR-003 邮件发送
 
-系统必须使用 Gmail API 的 `gmail.send` 权限发送邮件。OAuth 权限不得包含读取、删除或管理邮箱的权限。
+系统必须通过 Resend API 发送邮件，使用仅具备 Sending access 权限的 API Key。发信凭据不得依赖 Google 或学校账号密码，账号改密码后发信不得因此失效。
 
 ### AR-004 模块划分
 
@@ -71,7 +71,7 @@
 - 大作业分类；
 - 奥克兰时区处理；
 - 邮件 HTML/纯文本渲染；
-- Gmail OAuth 与发送客户端；
+- Resend 发送客户端；
 - 网络超时、重试和安全错误分类。
 
 ## 5. 定时要求
@@ -175,11 +175,11 @@ Quiz 元数据中的时间限制大于 60 分钟时，也应识别为大作业�
 
 ### ER-001 收件人
 
-当前生产主收件地址在文档中匿名显示为 `**@aucklanduni.ac.nz`。实际地址必须保存在 Cloudflare Secret `ALERT_TO_EMAIL` 中，不得硬编码到 Worker 源码。系统可以通过 Cloudflare Secret `ALERT_BACKUP_TO_EMAIL` 配置一个备用收件地址，并以密送方式发送，使主、备用收件人互不可见。
+当前生产主收件地址在文档中匿名显示为 `**@aucklanduni.ac.nz`。实际地址必须保存在 Cloudflare Secret `ALERT_TO_EMAIL` 中，不得硬编码到 Worker 源码。未在 Resend 验证自有域名时，`ALERT_TO_EMAIL` 必须是注册 Resend 的邮箱。验证域名后，系统可以通过 Cloudflare Secret `ALERT_BACKUP_TO_EMAIL` 配置一个备用收件地址，并以密送方式发送，使主、备用收件人互不可见。
 
 ### ER-002 发件人
 
-发件地址必须保存在 `ALERT_FROM_EMAIL` 中，并与 Gmail OAuth 授权账号一致，或为该账号已验证的发件别名。
+未验证域名时发件地址固定为 `onboarding@resend.dev`。验证域名后，可在 `RESEND_FROM_EMAIL` 中设置该域名下的发件地址。
 
 ### ER-003 今天／明天提醒
 
@@ -222,12 +222,10 @@ Quiz 元数据中的时间限制大于 60 分钟时，也应识别为大作业�
 
 - `CANVAS_USERNAME`
 - `CANVAS_PASSWORD`
-- `GMAIL_CLIENT_ID`
-- `GMAIL_CLIENT_SECRET`
-- `GMAIL_REFRESH_TOKEN`
-- `ALERT_FROM_EMAIL`
+- `RESEND_API_KEY`
 - `ALERT_TO_EMAIL`
-- `ALERT_BACKUP_TO_EMAIL`（可选备用收件地址）
+- `RESEND_FROM_EMAIL`（可选，需已验证域名）
+- `ALERT_BACKUP_TO_EMAIL`（可选备用收件地址，需已验证域名）
 
 ### SEC-002 凭据保护
 
@@ -242,7 +240,7 @@ Quiz 元数据中的时间限制大于 60 分钟时，也应识别为大作业�
 ### SEC-004 最小权限
 
 - Canvas 仅允许只读 `GET` 请求。
-- Gmail OAuth 仅允许 `gmail.send`。
+- Resend API Key 仅允许 Sending access。
 - Worker 不得读取收件箱内容。
 
 ## 10. 可靠性与错误处理要求
@@ -251,16 +249,15 @@ Quiz 元数据中的时间限制大于 60 分钟时，也应识别为大作业�
 
 - Canvas 页面导航超时：30 秒。
 - Canvas 同源 API 单次超时：15 秒。
-- Gmail OAuth 和发送请求单次超时：10 秒。
+- Resend 发送请求单次超时：10 秒。
 
 ### RR-002 重试
 
-临时网络错误、408、425、429 和 5xx 最多尝试三次，并采用有限指数退避。401、403、无效 OAuth refresh token 及其他明确的非临时错误不得反复重试。
+临时网络错误、408、425、429 和 5xx 最多尝试三次，并采用有限指数退避。401、403、无效 API Key 及其他明确的非临时错误不得反复重试。邮件发送的重试必须共用同一个 `Idempotency-Key`，避免重复投递。
 
 ### RR-003 响应保护
 
 - Canvas 单个响应正文不得超过 2,000,000 字符。
-- Gmail OAuth 响应不得超过 100,000 字符。
 - 无效 JSON、意外数据结构或分页不完整必须视为失败。
 
 ### RR-004 日志
@@ -269,7 +266,7 @@ Cloudflare 日志应记录事件类型、阶段、错误类别、提醒类型和
 
 ### RR-005 邮件发送失败
 
-Gmail 发送失败时必须记录 `gmail_delivery_failed` 类别日志，并让本次 Worker 运行以失败结束，便于 Cloudflare 后台发现。
+邮件发送失败时必须记录 `email_delivery_failed` 类别日志，并让本次 Worker 运行以失败结束，便于 Cloudflare 后台发现。
 
 ## 11. 测试与验收要求
 
@@ -286,9 +283,9 @@ Gmail 发送失败时必须记录 `gmail_delivery_failed` 类别日志，并让�
 - 大作业与 60 分钟以上 Quiz；
 - 无作业结果；
 - HTML 转义和安全链接；
-- Gmail MIME UTF-8/base64url 编码；
-- OAuth 密钥不泄漏；
-- 无效 refresh token 不重试；
+- Resend 请求内容与 UTF-8 正文；
+- API Key 只出现在 Authorization 头中；
+- 无效 API Key 不重试，重试复用幂等键；
 - 奥克兰冬令时和夏令时；
 - 跨月日期计算。
 
@@ -299,7 +296,7 @@ Gmail 发送失败时必须记录 `gmail_delivery_failed` 类别日志，并让�
 1. Canvas 登录成功；
 2. 活跃课程和作业读取完整；
 3. 提醒分类和时间正确；
-4. Gmail API 返回发送成功；
+4. Resend API 返回发送成功；
 5. 邮件实际出现在收件邮箱；
 6. 邮件没有落入垃圾邮件；
 7. 手机能够收到邮箱通知。
@@ -325,13 +322,13 @@ Canvas 或 University 登录页面结构发生变化时，浏览器选择器可�
 
 Canvas 密码变更、账号锁定、MFA 恢复或交互式验证出现时，必须更新 Secret 或人工处理后重新测试。
 
-### OP-003 Gmail OAuth
+### OP-003 Resend API Key
 
-OAuth 应用应保持 Production 状态。Refresh Token 被撤销、客户端密钥变更或授权账号变化后，必须重新授权并更新 Secrets。
+API Key 与账号密码无关。仅当密钥被删除、轮换或疑似泄露时，才需要在 Resend 中重新创建并更新 `RESEND_API_KEY`。
 
 ### OP-004 垃圾邮件
 
-首次投递可能被 Gmail 判为垃圾邮件。出现此情况时，应在收件邮箱中把发件人标记为“非垃圾邮件”，并视需要建立“永不归入垃圾邮件”的过滤规则。每次更改收件人后必须重新做实际投递测试。
+首次投递可能被收件邮箱判为垃圾邮件。出现此情况时，应在收件邮箱中把发件人标记为“非垃圾邮件”，并视需要建立“永不归入垃圾邮件”的过滤规则。每次更改收件人后必须重新做实际投递测试。
 
 ### OP-005 Cloudflare Browser Run
 
@@ -339,7 +336,7 @@ Browser Run 可能发生临时启动失败。此类运行必须发送失败告�
 
 ### OP-006 配置变更验收
 
-修改收件地址、Canvas 密码、Gmail OAuth、Worker 代码或 Cron 后，必须重新运行自动测试和真实投递测试，并同时检查 Cloudflare 日志与收件邮箱。
+修改收件地址、Canvas 密码、Resend API Key、Worker 代码或 Cron 后，必须重新运行自动测试和真实投递测试，并同时检查 Cloudflare 日志与收件邮箱。
 
 ## 13. 完成标准
 
@@ -353,4 +350,4 @@ Browser Run 可能发生临时启动失败。此类运行必须发送失败告�
 6. 类型检查和自动测试全部通过；
 7. 真实自动提醒已到达 `**@aucklanduni.ac.nz` 收件箱；
 8. 手机邮箱通知已开启；
-9. Cloudflare 日志中没有持续的认证、Canvas 或 Gmail 发送错误。
+9. Cloudflare 日志中没有持续的认证、Canvas 或邮件发送错误。
