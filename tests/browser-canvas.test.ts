@@ -90,3 +90,46 @@ test("Canvas login retries page reads during a redirect", async () => {
   );
   assert.equal(bodyTextCalls, 2);
 });
+
+test("Canvas login survives a redirect while looking for the login form", async () => {
+  let redirected = false;
+  let findCalls = 0;
+  const page: BrowserPageLike = {
+    url: () => (redirected ? "https://canvas.auckland.ac.nz/" : "https://login.example/"),
+    navigateTo: async () => undefined,
+    findElement: async () => {
+      findCalls += 1;
+      redirected = true;
+      throw new Error("Execution context was destroyed, most likely because of a navigation.");
+    },
+    waitForNavigation: async () => undefined,
+    bodyText: async () => "",
+    currentUserStatus: async () => (redirected ? 200 : 0),
+    apiGet: async () => ({ status: 0, link: null, body: "" })
+  };
+
+  await loginToCanvas(page, "user", "password");
+  assert.equal(findCalls, 1);
+});
+
+test("Canvas login still fails on non-navigation automation errors", async () => {
+  const page: BrowserPageLike = {
+    url: () => "https://login.example/",
+    navigateTo: async () => undefined,
+    findElement: async () => {
+      throw new Error("Protocol error: something broke");
+    },
+    waitForNavigation: async () => undefined,
+    bodyText: async () => "",
+    currentUserStatus: async () => 0,
+    apiGet: async () => ({ status: 0, link: null, body: "" })
+  };
+
+  await assert.rejects(
+    () => loginToCanvas(page, "user", "password"),
+    (error: unknown) =>
+      error instanceof SafeHttpError &&
+      error.category === "UPSTREAM" &&
+      /step_0_find_username \(protocol\)/.test(error.message)
+  );
+});

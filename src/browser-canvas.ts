@@ -230,6 +230,11 @@ function automationErrorCode(error: unknown): string {
   return "unclassified";
 }
 
+function isNavigationRace(error: unknown): boolean {
+  const code = automationErrorCode(error);
+  return code === "execution_context" || code === "detached_node";
+}
+
 async function authenticatedProbe(page: BrowserPageLike): Promise<boolean> {
   if (currentHost(page) !== "canvas.auckland.ac.nz") return false;
 
@@ -246,61 +251,69 @@ export async function loginToCanvas(
     await page.navigateTo(CANVAS_BASE_URL);
 
     for (let step = 0; step < 8; step += 1) {
-      stage = `step_${step}_probe`;
-      if (await authenticatedProbe(page)) return;
+      try {
+        stage = `step_${step}_probe`;
+        if (await authenticatedProbe(page)) return;
 
-      stage = `step_${step}_read_page`;
-      const text = (await pageText(page)).toLowerCase();
-      if (
-        /approve sign[ -]?in|verification code|multi-factor|two-factor|authenticator|verify your identity/.test(
-          text
-        )
-      ) {
-        throw new SafeHttpError("Canvas login requires additional verification", "AUTH");
-      }
-      if (/incorrect|invalid password|couldn't sign you in|account.*locked|login failed/.test(text)) {
-        throw new SafeHttpError("Canvas login was rejected", "AUTH");
-      }
-      if (/captcha|unusual activity|verify you are human/.test(text)) {
-        throw new SafeHttpError("Canvas login was blocked by an interactive challenge", "AUTH");
-      }
+        stage = `step_${step}_read_page`;
+        const text = (await pageText(page)).toLowerCase();
+        if (
+          /approve sign[ -]?in|verification code|multi-factor|two-factor|authenticator|verify your identity/.test(
+            text
+          )
+        ) {
+          throw new SafeHttpError("Canvas login requires additional verification", "AUTH");
+        }
+        if (/incorrect|invalid password|couldn't sign you in|account.*locked|login failed/.test(text)) {
+          throw new SafeHttpError("Canvas login was rejected", "AUTH");
+        }
+        if (/captcha|unusual activity|verify you are human/.test(text)) {
+          throw new SafeHttpError("Canvas login was blocked by an interactive challenge", "AUTH");
+        }
 
-      stage = `step_${step}_find_username`;
-      const usernameInput = await firstElement(page, USERNAME_SELECTORS);
-      stage = `step_${step}_find_password`;
-      const passwordInput = await firstElement(page, PASSWORD_SELECTORS);
-      let enteredCredentials = false;
+        stage = `step_${step}_find_username`;
+        const usernameInput = await firstElement(page, USERNAME_SELECTORS);
+        stage = `step_${step}_find_password`;
+        const passwordInput = await firstElement(page, PASSWORD_SELECTORS);
+        let enteredCredentials = false;
 
-      if (usernameInput) {
-        stage = `step_${step}_enter_username`;
-        await replaceValue(usernameInput, username);
-        enteredCredentials = true;
-      }
-      if (passwordInput) {
-        stage = `step_${step}_enter_password`;
-        await replaceValue(passwordInput, password);
-        enteredCredentials = true;
-      }
+        if (usernameInput) {
+          stage = `step_${step}_enter_username`;
+          await replaceValue(usernameInput, username);
+          enteredCredentials = true;
+        }
+        if (passwordInput) {
+          stage = `step_${step}_enter_password`;
+          await replaceValue(passwordInput, password);
+          enteredCredentials = true;
+        }
 
-      if (enteredCredentials) {
-        stage = `step_${step}_find_submit`;
-        const submit = await firstElement(page, SUBMIT_SELECTORS);
-        if (!submit) throw new SafeHttpError("Canvas login form was not recognized", "AUTH");
-        stage = `step_${step}_submit`;
-        await clickAndWait(page, submit);
-        continue;
-      }
+        if (enteredCredentials) {
+          stage = `step_${step}_find_submit`;
+          const submit = await firstElement(page, SUBMIT_SELECTORS);
+          if (!submit) throw new SafeHttpError("Canvas login form was not recognized", "AUTH");
+          stage = `step_${step}_submit`;
+          await clickAndWait(page, submit);
+          continue;
+        }
 
-      stage = `step_${step}_find_stay_signed_in`;
-      const declineStaySignedIn = await page.findElement("#idBtn_Back");
-      if (declineStaySignedIn) {
-        stage = `step_${step}_decline_stay_signed_in`;
-        await clickAndWait(page, declineStaySignedIn);
-        continue;
-      }
+        stage = `step_${step}_find_stay_signed_in`;
+        const declineStaySignedIn = await page.findElement("#idBtn_Back");
+        if (declineStaySignedIn) {
+          stage = `step_${step}_decline_stay_signed_in`;
+          await clickAndWait(page, declineStaySignedIn);
+          continue;
+        }
 
-      stage = `step_${step}_wait`;
-      await delay(1_000);
+        stage = `step_${step}_wait`;
+        await delay(1_000);
+      } catch (error) {
+        // A redirect between pages destroys the DOM being queried; re-read the
+        // new page on the next step instead of failing the whole login.
+        if (error instanceof SafeHttpError || !isNavigationRace(error)) throw error;
+        stage = `step_${step}_navigation_race`;
+        await delay(1_000);
+      }
     }
 
     throw new SafeHttpError("Canvas login did not complete", "AUTH");
